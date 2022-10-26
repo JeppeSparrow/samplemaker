@@ -11,9 +11,7 @@ the European Research Council (ERC) under the European Union’s Horizon 2020 re
 * SampleMaker lithographic mask design tool in Python.
 
 ### How do I get set up? ###
-
-* Install via pip (pip install git+https://github.com/JeppeSparrow/samplemaker)
-* or clone the repository and set PYTHONPATH to the src/ subfolder
-* Download the tutorials
+* Clone the repository and set PYTHONPATH to the src/ subfolder
+* Go through the tutorials
 * Additional documentation can be generated via pdoc3
 
