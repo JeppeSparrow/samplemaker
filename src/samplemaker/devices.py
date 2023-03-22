@@ -766,7 +766,7 @@ class Device:
         device.parameters()
         device.ports()
         return device
-
+   
 
 class NetListEntry:
     def __init__(self,devname: str, x0: float, y0: float, rot: str, 
@@ -832,6 +832,7 @@ class NetList:
         self.entry_list = entry_list
         self.external_ports = []
         self.aligned_ports = []
+        self.paths = dict()
     
     def __hash__(self):
         return hash((self.name,tuple(self.entry_list),tuple(self.external_ports),
@@ -871,6 +872,24 @@ class NetList:
         """
         self.aligned_ports = aligned_ports
         
+    def set_path(self, port_name: str, coords: list):
+        """
+        Define a specific path that a wire should follow. 
+
+        Parameters
+        ----------
+        port_name : str
+            The name of the wire.
+        coords : list
+            list of coordinates, x1, y1, x2, y2... that the wire should follow.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.paths[port_name]=coords
+        
     @classmethod
     def ImportCircuit(cls, file_name: str, circuit_name: str = ""):
         """
@@ -900,6 +919,7 @@ class NetList:
             current_netlist = ""
             current_entrylist = []
             current_align = []
+            current_path = dict()
             all_lists = dict(); # stores all the imported netlists
             for line in f:
                 tokens = line.split()
@@ -914,13 +934,37 @@ class NetList:
                 if(tokens[0]==".ALIGN" and current_netlist != ""):
                     current_align = tokens[1:]
                     continue
+                if(tokens[0]==".PATH" and current_netlist != ""):
+                    # expect 4 tokens minimum
+                    wirename=tokens[1]
+                    pathlist = []
+                    if(len(tokens[2:])%3)>0:
+                        print("Warning: wrong number of values specified for .PATH command")
+                    else:
+                        for i in range(0,len(tokens[2:]),3):
+                            pathlist+=[float(tokens[2+i])] # X
+                            pathlist+=[float(tokens[3+i])] # Y
+                            angle = tokens[4+i] # angle
+                            if(angle=="N"):
+                                pathlist+=[90]
+                            if(angle=="E"):
+                                pathlist+=[0]
+                            if(angle=="W"):
+                                pathlist+=[180]
+                            if(angle=="S"):
+                                pathlist+=[270]
+                            
+                    current_path[wirename]=pathlist
+                    continue
                 if(tokens[0]==".END" and current_netlist != ""):
                     clist = cls(current_netlist[0],deepcopy(current_entrylist))
                     clist.aligned_ports=current_align;
                     clist.external_ports=current_netlist[1:]
+                    clist.paths=deepcopy(current_path)
                     current_entrylist = []
                     current_netlist = ""
                     current_align = []
+                    current_path.clear()
                     all_lists[clist.name]=clist
                     continue
                 # Now we should have only entries
@@ -1046,6 +1090,8 @@ class Circuit(Device):
         netlist = self._p["NETLIST"].entry_list
         external_ports = self._p["NETLIST"].external_ports
         aligned_ports = self._p["NETLIST"].aligned_ports
+        paths = self._p["NETLIST"].paths
+
         input_ports = dict()
         output_ports = dict()
         # Instantiate all devices
@@ -1105,7 +1151,26 @@ class Circuit(Device):
             if portname in output_ports:
                 port2 = output_ports[portname]
                 if(port1.connector_function == port2.connector_function):
-                    g+=port1.connector_function(port1,port2)
+                    if portname in paths:
+                        # Force connector between virtual points
+                        pts = paths[portname]
+                        if(len(pts)%3 > 0):
+                            print("Warning, specified path for wire",portname,"should include 3 values for each point (x,y,angle)")
+                        else:
+                            portx = deepcopy(port1)
+                            for i in range(0,len(pts),3):
+                                print("Connecting",pts[i],pts[i+1])
+                                portx.x0 = pts[i]
+                                portx.y0 = pts[i+1]
+                                portx.set_angle(math.radians(pts[i+2]))
+                                portx.bf = not portx.bf
+                                g+=port1.connector_function(port1,portx)
+                                portx.bf = not portx.bf
+                                port1=deepcopy(portx)
+                                
+                            g+=portx.connector_function(portx,port2)
+                    else:
+                        g+=port1.connector_function(port1,port2)
                 else:
                     print("Warning, incompatible ports for connection named",portname)
             else:
@@ -1132,221 +1197,8 @@ class Circuit(Device):
         for p in ext_ports.values():
             self.addport(deepcopy(p))
 
-# class DeviceTableAnnotations:
-#     def __init__(self,colfmt, rowfmt, xoff, yoff, colvars, rowvars,
-#                  text_width=5, text_height=5,
-#                  left = True,right =True,above = True,below = True):
-#         self.colfmt = colfmt
-#         self.rowfmt = rowfmt
-#         self.colvars = colvars
-#         self.rowvars = rowvars
-#         self.left = left
-#         self.right = right
-#         self.above = above
-#         self.below = below
-#         self.xoff = xoff
-#         self.yoff = yoff
-#         self.text_width = text_width
-#         self.text_height = text_height
-#         #possible formats are
-#         # headers
-#         # headersR
-#         # headersL
-#         # side
-    
-#     def render(self,i,j,cols,rows,x0,y0,coldict, rowdict):
-#         coltxt = deepcopy(self.colfmt)
-#         rowtxt = deepcopy(self.rowfmt)
-#         coltxt = coltxt.replace("%I",str(i))
-#         rowtxt = rowtxt.replace("%I",str(i))
-#         coltxt = coltxt.replace("%J",str(j))
-#         rowtxt = rowtxt.replace("%J",str(j))
-#         for v in range(len(self.colvars)):
-#             pstr = "%C"+str(v)
-#             coltxt = coltxt.replace(pstr,str(coldict[self.colvars[v]][i]))
-#             rowtxt = rowtxt.replace(pstr,str(coldict[self.colvars[v]][i]))
-#         for v in range(len(self.rowvars)):
-#             pstr = "%R"+str(v)
-#             coltxt = coltxt.replace(pstr,str(rowdict[self.rowvars[v]][j]))
-#             rowtxt = rowtxt.replace(pstr,str(rowdict[self.rowvars[v]][j]))  
-#         g = GeomGroup();
-#         if(self.left and i==0):
-#             x = x0-self.xoff
-#             y = y0
-#             g+= make_text(x,y,rowtxt,self.text_width,self.text_height)
-#         if(self.right and i==(cols-1)):
-#             x = x0+self.xoff
-#             y = y0
-#             g+= make_text(x,y,rowtxt,self.text_width,self.text_height)
-#         if(self.above and j==(rows-1)):
-#             x = x0
-#             y = y0+self.yoff
-#             g+= make_text(x,y,coltxt,self.text_width,self.text_height)
-#         if(self.below and j==0):
-#             x = x0
-#             y = y0-self.yoff
-#             g+= make_text(x,y,coltxt,self.text_width,self.text_height)
-        
-#         return g
-    
-
-# class DeviceTable(Device):
-#     def __flatdict(self,d,parent_str):
-#         flatdict=dict()
-#         for key,value in d.items():
-#             if type(value)==dict:
-#                 newdict = self.__flatdict(value,parent_str+key+"::")
-#                 for key,value in newdict.items():
-#                     flatdict[key]=value
-#             elif type(value)==np.ndarray:
-#                 flatdict[parent_str+key]=value.tostring()
-#             else:
-#                 flatdict[parent_str+key]=value
-#         #print(flatdict, " from ", parent_str)
-#         return flatdict
-    
-#     def __hash__(self):
-#         flatdict = self.__flatdict(self._p,"")
-#         return hash((frozenset(flatdict.items()), self._name))
-    
-#     @staticmethod
-#     def Regular(cols:int,rows:int,ax:float,ay:float,bx:float,by:float):
-#         return tuple([tuple([(i*ax+j*bx,i*ay+j*by) for i in range(cols)]) for j in range(rows)])
-       
-#     # @staticmethod
-#     # def WriteField(cols:int,rows:int,ax:float,ay:float,bx:float,by:float,
-#     #                       wfsize: float, wfx: float, wfy: float, dev_bb: List[float],wfdist: float = 20):
-#     #     for i in range(cols):
-#     #         for j in range(rows):
-#     #             xc = i*ax+j*ay
-#     #             yc = i*bx+j*by
-#     #             if xc
-        
-#     #     return tuple([tuple([(i*ax+j*ay,i*bx+j*by) for i in range(cols)]) for j in range(rows)])
-    
-#     def initialize(self):
-#         self._name = "TABLE"
-#         pass
-    
-#     def parameters(self):
-#         self.addparameter("columns", 1,"Number of columns",int)
-#         self.addparameter("rows", 1,"Nomber of rows",int)
-#         self.addparameter("table_positions",(((0,0),),),"A colsxrows tuple of coordinates for placing the elements")
-#         self.addparameter("default_params", dict(), "A dictionary of default parameter to be assigned before device creation")
-#         self.addparameter("col_variables", dict(),"A list of variables and values to be changed along columns")
-#         self.addparameter("row_variables", dict(),"A list of variables and values to be changed along rows")
-#         self.addparameter("device_name", "", "A device to be used in a table",str)
-#         self.addparameter("device_rot",0,"Device rotation",float)
-#         self.addparameter("col_linkports", (), "Tuple of tuples containing port names that should be linked along columns")
-#         self.addparameter("row_linkports", (), "Tuple of tuples containing port names that should be linked along rows")
-#         self.addparameter("col_alignports", False, "The first pair specified in col_linkports will be aligned",bool)
-#         self.addparameter("row_alignports", False, "The first pair specified in col_linkports will be aligned",bool)
-#         self.addparameter("annotations",DeviceTableAnnotations("","",0,0,(),()),"The device annotations")
-#         self.addlocalparameter("external_ports", dict(), "Locally store the ports that connect to the circuit")
-        
-#     def geom(self):
-#         devname = self._p["device_name"]
-#         default_params = self._p["default_params"]
-#         if devname not in _DeviceList:
-#             print("Warning, no device named",devname,"found.")
-#             return GeomGroup()
-#         g = GeomGroup();
-#         dev = _DeviceList[devname].build()
-#         for key,value in default_params.items():
-#             dev.set_param(key,value)
-#         cols = self._p["columns"]
-#         rows = self._p["rows"]
-#         pos_xy = self._p["table_positions"]
-
-#         cvars = self._p["col_variables"]
-#         rvars = self._p["row_variables"]
-        
-#         clports = self._p["col_linkports"]
-#         rlports = self._p["row_linkports"]
-        
-#         clalign = self._p["col_alignports"]
-#         rlalign = self._p["row_alignports"]
-        
-#         dta = self._p["annotations"]
-        
-#         portmap = [[dict() for i in range(cols)] for j in range(rows)] 
-#         for i in range(cols):
-#             for var,valuelist in cvars.items():
-#                 if(len(valuelist)!=cols):
-#                     dev.set_param(var,valuelist[0])
-#                 else:
-#                     dev.set_param(var,valuelist[i])   
-#             for j in range(rows):
-#                 for var,valuelist in rvars.items():
-#                     if(len(valuelist)!=rows):
-#                         dev.set_param(var,valuelist[0])
-#                     else:
-#                         dev.set_param(var,valuelist[j])
-
-#                 dev.set_angle(math.radians(self._p["device_rot"]))
-#                 dev._x0 = pos_xy[j][i][0]
-#                 dev._y0 = pos_xy[j][i][1]
-#                 # ok now we can instantiate
-#                 dev.use_references = self.use_references
-#                 geom=dev.run()
-#                 g+=geom
-#                 portmap[j][i] = deepcopy(dev._ports)
-#                 # annotations
-#                 g+=dta.render(i,j,cols,rows,dev._x0,dev._y0,cvars, rvars)
-                
-#                 # Column linking
-                
-#                 if (i>0):
-#                     for links in clports:                        
-#                         if links[0] in portmap[j][i-1] and links[1] in portmap[j][i]:
-#                             p1 = portmap[j][i-1][links[0]]
-#                             p2 = portmap[j][i][links[1]]
-#                             #print(i,j,p1.x0,p1.y0,p2.x0,p2.y0)
-#                             if(p1.connector_function == p2.connector_function):
-#                                 if(clalign and p1.dx() != 0 and p2.dx() != 0):
-#                                     ydiff = p2.y0-p1.y0
-#                                     geom.translate(0,-ydiff)
-#                                     for pp in portmap[j][i].values():
-#                                         pp.y0 -= ydiff    
-                                                                        
-#                                 g+=p1.connector_function(p1,p2)                                
-#                             else:
-#                                 print("Warning, incompatible ports for connection between",p1.name,
-#                                       "and",p2.name)              
-#                 if (j>0):
-#                     for links in rlports:  
-#                         if links[0] in portmap[j-1][i] and links[1] in portmap[j][i]:
-#                             p1 = portmap[j-1][i][links[0]]
-#                             p2 = portmap[j][i][links[1]]
-#                             #print(i,j,p1.x0,p1.y0,p2.x0,p2.y0)
-#                             if(p1.connector_function == p2.connector_function):
-#                                 if(rlalign and p1.dy() != 0 and p2.yx() != 0):
-#                                     xdiff = p2.x0-p1.x0
-#                                     geom.translate(0,-xdiff)
-#                                     for pp in portmap[j][i].values():
-#                                         pp.x0 -= xdiff    
-#                                 g+=p1.connector_function(p1,p2)
-#                             else:
-#                                 print("Warning, incompatible ports for connection between",p1.name,
-#                                       "and",p2.name)             
-        
-#                 # Store external ports to expose them
-#                 for pp in portmap[j][i].values():
-#                     p1 = deepcopy(pp)
-#                     p1.name+="_%i_%i"%(i,j)
-#                     self._localp["external_ports"][p1.name]=p1
-#         return g
-    
-#     def ports(self):
-#         ext_ports = self._localp["external_ports"]
-#         for p in ext_ports.values():
-#             self.addport(deepcopy(p))
-
-
 _DeviceList = dict()
 _DeviceList["X"]=Circuit
-#_DeviceList["TABLE"]=DeviceTable
-
 
 def registerDevicesInModule(module_name: str):
     """
