@@ -191,6 +191,29 @@ class GeomGroup:
                 sref_list=geom.group.get_sref_list(sref_list)
         return sref_list                
         
+    def get_layer_list(self, layer_list=set()) -> set:
+        """
+        Returns a unique set of int with the layers in the object (recursively)
+        Should be called by the user without arguments, when querying the layers
+
+        Parameters
+        ----------
+        layer_list : set, optional
+            A set of integers with layers. The default is empty set.
+
+        Returns
+        -------
+        layer_list: set
+            The complete layer list.
+
+        """
+        for geom in self.group:
+            if(type(geom)==SRef or type(geom)==ARef):
+                layer_list=geom.group.get_layer_list(layer_list)
+            else:
+                layer_list.add(geom.layer)
+        
+        return layer_list                
     
     def translate(self,dx: float,dy: float):
         """
@@ -317,7 +340,75 @@ class GeomGroup:
         for geom in self.group:
             geom.mirrorY(y0)
         return self
-            
+    
+    def __entity_count(self, recursive: bool = True, layer_wise: bool = False, layer:int = 0) -> dict:
+        cnt = dict()
+        lfgroup = self.group
+        if(layer_wise):
+            lfgroup = [g for g in self.group if g.layer==layer]        
+        cnt["NPoly"] = len([g for g in lfgroup if type(g)==Poly])
+        cnt["NPath"] = len([g for g in lfgroup if type(g)==Path])
+        cnt["NText"] = len([g for g in lfgroup if type(g)==Text])
+        cnt["NCircle"] = len([g for g in lfgroup if type(g)==Circle])
+        cnt["NEllipse"] = len([g for g in lfgroup if type(g)==Ellipse])
+        cnt["NRing"] = len([g for g in lfgroup if type(g)==Ring])
+        cnt["NArc"] = len([g for g in lfgroup if type(g)==Arc])
+        if not recursive:
+            cnt["NSRef"] = len([g for g in self.group if type(g)==SRef])
+            cnt["NARef"] = len([g for g in self.group if type(g)==ARef])
+        else:
+            for g in self.group:
+                if type(g)==SRef or type(g)==ARef:
+                    subcnt = g.group.__entity_count(recursive,layer_wise,layer)
+                    if type(g)==ARef:
+                        for e in subcnt.keys(): 
+                            subcnt[e]*=g.ncols*g.nrows
+                    for name in cnt:
+                        cnt[name]+=subcnt[name]
+        return cnt
+    
+    def __str__(self):
+        """
+        Display basic geometry information (size and layers)
+
+        Returns
+        -------
+        msg : str
+            A string with the basic information about the geometry.
+
+        """
+        bb = self.bounding_box()
+        w = float(round(bb.width*1e3))/1e3
+        h = float(round(bb.height*1e3))/1e3
+        msg = "GeomGroup ("+str(w)+" x "+str(h)+")\n"
+        msg+= "Layers: "+str(self.get_layer_list())+"\n"
+        return msg
+    
+    def info(self) -> dict:
+        """
+        Generate useful statistics on the group (element count, size)
+        and return it in a dict. 
+
+        Returns
+        -------
+        dict
+            Contains information on the group geometry.
+
+        """
+        stat = dict()
+        bb = self.bounding_box()
+        layer_list = self.get_layer_list()
+        stat["BoundingBox"]={"x":bb.cx(),"y":bb.cy(),"width":bb.width, "height":bb.height}
+        stat["LayerList"]=[l for l in layer_list]
+        for l in layer_list:
+            cnt = self.__entity_count(True, True, l)   
+            cnt = {k: v for k, v in cnt.items() if v != 0}
+            stat["Layer"+str(l)] = cnt
+        cnt = self.__entity_count(True)
+        cnt = {k: v for k, v in cnt.items() if v != 0}
+        stat["TotalCount"] = cnt
+        return stat
+    
     def bounding_box(self) -> 'Box':
         """
         Calculates the group bounding box
@@ -334,7 +425,31 @@ class GeomGroup:
         for geom in self.group:
             bb.combine(geom.bounding_box())
         return bb
-            
+    
+    def to_boxes(self, layer: int) -> 'GeomGroup':
+        """
+        Generates a GeomGroup with the bounding boxes of each individual 
+        geometry. It can be used to create a coarse overlay mask. Acts
+        on a single layer.
+
+        Parameters
+        ----------
+        layer : int
+            The layer to use for bounding boxes.
+
+        Returns
+        -------
+        'GeomGroup'
+            A geometry group with the bounding boxes of each element in the 
+            original group.
+
+        """
+        bb = GeomGroup()
+        for geom in self.group:
+            if(geom.layer==layer):
+                bb+=geom.bounding_box().toRect()
+        bb.set_layer(layer)
+        return bb
             
     def set_layer(self,layer: int):
         """
@@ -376,6 +491,27 @@ class GeomGroup:
                 g.add(geom)
         return g
     
+    def select_layers(self,layers: List[int]) -> 'GeomGroup':
+        """
+        Create a new GeomGroup containing only shapes in a list of layers.
+
+        Parameters
+        ----------
+        layers : List[int]
+            The selected layer list.
+
+        Returns
+        -------
+        g : GeomGroup
+            A new GeomGroup object with elements of the selected layer list.
+
+        """
+        g = GeomGroup()
+        for geom in self.group:
+            if(geom.layer in layers):
+                g.add(geom)
+        return g
+    
     def deselect_layers(self, layers: List[int])-> 'GeomGroup':
         """
         Create a new GeomGroup containing only shapes that are not in layer list
@@ -397,6 +533,167 @@ class GeomGroup:
                 g.add(geom)
         return g
         
+    def select(self, query_str: str)-> 'GeomGroup':
+        """
+        Performs a selection of the shapes (filtering) based on geometrical 
+        properties. The output GeomGroup contains only the elements that satisfy
+        the conditions expressed in the query string.
+        For example, to select only polygons with area smaller than 1, do
+        sel = geom.select("A<=1").
+        The geometry is flattened prior to selection if sub-references are encountered.
+        The following properties can be used
+            "A": Area
+            "P": Perimeter
+            "W": Bounding box width
+            "H": Bounding box height
+            "L": Layer
+            "T": type (can be Poly, Path, Text, Circle, Ellipse, Ring, Arc)
+            "x": centroid x coordinate
+            "y": centroid y coordinate
+            "llx": lower-left x coordinate of the bounding box
+            "lly": lower-left y coordinate of the bounding box
+            "urx": upper-right x coordinate of the bounding box
+            "ury": upper-right y coordinate of the bounding box
+        Any Python logical expression can be used including mathematical operations between 
+        variables, for example the shape index lower than 0.2 can be queried as follows
+        sel = geom.select("12.566*A/P**2<=0.2").
+        
+        Boolean operation should be expressed using parenthesis and bitwise operator &,^,|,!
+        for example
+        sel = geom.select("(x<1) & (y>5)").
+        
+
+        Parameters
+        ----------
+        query_str : str
+            A string defining the selection condition.
+
+        Raises
+        ------
+        NameError
+            If variable names are not recognized.
+
+        Returns
+        -------
+        'GeomGroup'
+            A geometry group containing the elments that satisfy the criteria.
+
+        """
+        allowed_names = {'A': "Polygon area",
+                         'P': "Polygon perimeter",
+                         'W': "Bounding box width",
+                         'H': "Bounding box height",
+                         'L': "Layer",
+                         'T': "Type",
+                         'x': "X position, center or reference pos",
+                         'y': "Y position, center or reference pos",
+                         'llx': "lower left x position of the bb",
+                         'lly': "lower left y position of the bb",
+                         'urx': "upper right x position of the bb",
+                         'ury': "upper right y position of the bb"}
+        code = compile(query_str,"<string>","eval")
+        sflat = self
+        if(len(self.get_sref_list())!=0):
+           sflat=self.flatten()
+        # Pre-allocate Bounding boxes
+        bbs = [g.bounding_box() for g in sflat.group]
+        for name in code.co_names:
+            if(name not in allowed_names):
+                raise NameError(f"Use of expression {name} not allowed")
+        
+            # Prepare the local variable dictionary
+            
+            if name=="A": # Prepare area array
+                allowed_names[name]=np.array([g.area() for g in sflat.group])
+            if name=="P": # Prepare area array
+                allowed_names[name]=np.array([g.perimeter() for g in sflat.group])
+            if name=="L": # Prepare layer array
+                allowed_names[name]=np.array([g.layer for g in sflat.group])
+            if name=="W": # Prepare width array
+                allowed_names[name]=np.array([b.width for b in bbs])
+            if name=="H": # Prepare height array
+                allowed_names[name]=np.array([b.height for b in bbs])
+            if name=="x" or name=="y": # Prepare centroid array
+                allowed_names["x"]=np.array([g.centroid()[0] for g in sflat.group])
+                allowed_names["y"]=np.array([g.centroid()[1] for g in sflat.group])
+            if name=="llx": # Prepare LL array
+                allowed_names["llx"]=np.array([b.llx for b in bbs])
+            if name=="lly": # Prepare LL array
+                allowed_names["lly"]=np.array([b.lly for b in bbs])
+            if name=="urx": # Prepare UR array
+                allowed_names["urx"]=np.array([b.urx() for b in bbs])
+            if name=="ury": # Prepare UR array
+                allowed_names["ury"]=np.array([b.ury() for b in bbs])            
+            if name=="T": # Prepare type array
+                allowed_names[name]=np.array([str(g.__class__.__name__) for g in sflat.group])
+            
+                
+        # Now execute
+        g = GeomGroup()
+        sel = eval(code, {"__builtins__": {}}, allowed_names)
+        g.group[:] = [sflat.group[i] for i,val in enumerate(sel) if val]
+        return g
+       
+    def find_matching_patterns(self, pattern: "GeomGroup", layer: int):        
+        """
+        Finds the position of a given repeating pattern in the geometry.
+        User provides a pattern as a geom group. The pattern should not be 
+        disjoint (i.e. after boolean union, it should contain one element only)
+        The code search for the identical pattern in the whole group for a given
+        layer. Once found, an array of x,y coordinates is returned, corresponding
+        to coordinates of the pattern.
+        Note, the code performs boolean union on the input pattern as well as
+        on the entire geometry.
+
+        Parameters
+        ----------
+        pattern : "GeomGroup"
+            The pattern to be searched. Must be a single connected polygon
+        layer : int
+            The layer to perform the search on.
+
+        Returns
+        -------
+        res : List
+            A list of coordinate pairs, corresponding to the location of the pattern.
+
+        """
+        psearch=pattern.copy()
+        psearch.all_to_poly()
+        psearch.boolean_union(layer)
+        if(len(psearch.group)!=1):
+            print("It is only possible to search for a single polygon shape")
+        plook = self.copy().boolean_union(layer)
+        b1 = psearch.bounding_box()
+        psearch.translate(-b1.cx(),-b1.cy())
+        g2 = psearch.group[0]
+        res = []
+        for g in plook.group:
+            if(type(g)==Poly):
+                bb=g.bounding_box()
+                g.translate(-bb.cx(),-bb.cy())
+                if(g.identical_to(g2)):
+                     res+=[[bb.cx(),bb.cy()]]   
+        return res
+        
+            
+    def get_area(self)->float:
+        """
+        Calculates the total area of the group
+
+        Returns
+        -------
+        float
+            The total area of the group.
+
+        """
+        area = 0
+        for i in range(len(self.group)):
+            if(type(self.group[i])==SRef or type(self.group[i])==ARef):
+                area+=self.group[i].group.get_area(); 
+            else:
+                area+=self.group[i].area()
+        return float(round(area*1e6))/1e6
     
     def path_to_poly(self):
         """
@@ -432,7 +729,7 @@ class GeomGroup:
         self.group[:] = [g for g in self.group if not type(g)==Text]
         self.group = self.group+polys.group
 
-    def all_to_poly(self):
+    def all_to_poly(self, Npts_circ: int=12, Npts_arc: int=32, split_arc: bool =False ):
         """
         Converts all elements except for SRef and Aref to polygons
 
@@ -441,14 +738,69 @@ class GeomGroup:
         None.
 
         """
+        
         polys = GeomGroup();
         for i in range(len(self.group)):
-            if((type(self.group[i])!=SRef) and (type(self.group[i])!=ARef)): 
+            g = self.group[i]
+            if(type(g)==Poly):
+                polys+=self.group[i].to_polygon()
+            if(type(g)==Text):
+                polys+=self.group[i].to_polygon()
+            if(type(g)==Path):
                 polys+=self.group[i].to_polygon()                
+            if(type(g)==Circle):
+                polys+=self.group[i].to_polygon(Npts_circ)
+            if(type(g)==Ellipse):
+                polys+=self.group[i].to_polygon(Npts_arc)
+            if(type(g)==Ring):
+                polys+=self.group[i].to_polygon(Npts_arc)
+            if(type(g)==Arc):
+                polys+=self.group[i].to_polygon(Npts_arc,split_arc)
+                    
+                    
 
         self.group[:] = [g for g in self.group if type(g)==SRef or type(g)==ARef]
-        self.group = self.group+polys.group
+        self.group = self.group+polys.group    
+    
+    def poly_to_circle(self, thresh: float = 0.95, vcount: int = 10, include_refs: bool = True):
+        """
+        Converts all polygons to circle, when they meet a circularity threshold and
+        a vertex count larger than the vcount parameter.
         
+
+        Parameters
+        ----------
+        thresh : float, optional
+            Circularity threshold (1=perfect circle). The default is 0.95.
+        vcount : int, optional
+            Minimum number of vertices to perform the conversion. The default is 10.
+        include_refs : bool, optional
+            Perform recursive conversion to SRefs and ARefs. The default is True
+
+        Returns
+        -------
+        None.
+
+        """
+        polys = GeomGroup();
+        for i in range(len(self.group)):
+            if (type(self.group[i])==Poly):
+                convp = self.group[i].to_circle(thresh,vcount)
+                if(convp.group==[]):
+                    polys.group+=[self.group[i]]
+                else:
+                    polys+=convp
+                continue
+            if (type(self.group[i])==SRef or type(self.group[i])==ARef):                
+                if(include_refs):
+                    self.group[i].group.poly_to_circle(thresh,vcount)
+                continue
+            # None of the above, just keep
+            polys.group+=[self.group[i]]
+        
+        self.group[:] = [g for g in self.group if type(g)==SRef or type(g)==ARef]
+        self.group = self.group+polys.group    
+    
     def in_polygons(self, x: float,y:float) -> bool:
         """
         Checks if a given coordinate is inside the GeomGroup polygons. 
@@ -677,9 +1029,10 @@ class GeomGroup:
                 self.group[i].anisotropic_resize(angles,deltas)
         return self
     
-    def poly_outlining(self, offset: float, layer: int, corner_fill_arc: bool = False, num_circle_segments: int = 0):
+    def poly_outlining(self, offset: float, layer: int, distance: float = 0, corner_fill_arc: bool = False, num_circle_segments: int = 0):
         """
         Calculates the polygon outline by resizing and subtracting the original geometry.
+        Also works on circles (ignores the other elements, which must be converted to poly first)
 
         Parameters
         ----------
@@ -687,6 +1040,9 @@ class GeomGroup:
             Positive or negative offset (resizing) amount.
         layer : int
             The layer to be resized.
+        distance: float, optional
+            How far should the outline be displaced from the polygon edge. 
+            Negative values mean inward distance. The default is 0.
         corner_fill_arc : bool, optional
             Rounds the convex corners. The default is False.
         num_circle_segments : int, optional
@@ -699,7 +1055,11 @@ class GeomGroup:
         """
         pg0 = self.__get_boopy__(layer)
         pgorig = self.__get_boopy__(layer)
-        pg0.resize(round(offset*1000),corner_fill_arc, num_circle_segments)
+        if(distance != 0):
+            pg0.resize(round((offset+distance)*1000),corner_fill_arc, num_circle_segments)
+            pgorig.resize(round(distance*1000),corner_fill_arc,num_circle_segments)
+        else:
+            pg0.resize(round(offset*1000),corner_fill_arc, num_circle_segments)
         self.group[:] = [g for g in self.group if not (type(g)==Poly and g.layer==layer)]
         if(offset>0):
             pg0.difference(pgorig)
@@ -707,8 +1067,50 @@ class GeomGroup:
         else:
             pgorig.difference(pg0)
             self.__set_boopy__(pgorig,layer)
+            
+        #Circles
+        for i in range(len(self.group)):
+            if type(self.group[i])==Circle:
+                g = self.group[i]
+                self.group[i] = Arc(g.x0,g.y0,g.r+offset/2+distance,g.r+offset/2+distance,g.layer,0,offset,0,360)            
+                
+        return self
+    
+    def invert(self, layer: int, offset: float = 0):      
+        """
+        Performs the inverse boolean operation (NOT) on a group.
+        Acts on the specified layer only. 
+        The result is the negative of the mask on the bounding box polygon.
+        An offset can be specified to bloat/shrink the bounding box before inversion.
+
+        Parameters
+        ----------
+        layer : int
+            The layer to be inverted.
+        offset : float, optional
+            Resizing amount (positive or negative) of the bounding box before inversion. The default is 0.
+
+        Returns
+        -------
+        reference to the inverted object.
+
+        """
+        pg0 = self.__get_boopy__(layer)
+        sel = self.select_layer(layer)
+        if len(sel.group)==0: 
+            return self
+        bb = sel.bounding_box().toRect();
+        bb.set_layer(layer)
+        if(offset!=0):
+            bb.poly_resize(offset, layer)
+        pgm = bb.__get_boopy__(layer)
+        pgm.difference(pg0)
+        self.group[:] = [g for g in self.group if not (type(g)==Poly and g.layer==layer)]        
+        self.__set_boopy__(pgm, layer)
+        
         return self
         
+       
     def trapezoids(self,layer: int):
         """
         Converts and fractures all polygons in a set of trapezoids.
@@ -728,6 +1130,49 @@ class GeomGroup:
         self.group[:] = [g for g in self.group if not (type(g)==Poly and g.layer==layer)]
         self.__set_boopy__(pg0, layer)
         return self
+    
+    def poly_filter(self, keep_str: str) -> int:
+        """
+        Performs filtering of vertices based on a condition string.
+        Possible conditions are expressed based on the following variables
+        'A': "Three-point polygon unsigned area",
+        'As': "Three-point polygon signed area",
+        'P': "three point perimeter",
+        'S': "Shape index of the triangle (4*pi*A/(P**2))",
+        'x': "x-coordinate of query point",
+        'y': "y-coordinate of query point",
+        'xm': "x-coordinate of previous point",
+        'ym': "y-coordinate of previous point",
+        'xp': "x-coordinate of next point",
+        'yp': "y-coordinate of next point",
+        'dm': "distance between query point and previous point",
+        'dp': "distance between query point and next point",
+        'd0': "distance between previous and next point"
+        These variables are defined over 3 consecutive points.
+        If the condition is met, the middle point is kept, otherwise
+        it is discarded and the next 3 points are tested. All layers are used
+
+        Parameters
+        ----------
+        keep_str : str
+            String that contains the condition to keep a vertex or not.
+
+        Raises
+        ------
+        NameError
+            If a name that is not allowed is used.
+
+        Returns
+        -------
+        int
+            The number of vertices discarded.
+
+        """
+        ndisc = 0
+        for g in self.group:
+            if(type(g)==Poly):
+                ndisc+=g.three_point_filter(keep_str)
+        return ndisc
 
 class Dot:
     def __init__(self,x,y):
@@ -937,6 +1382,10 @@ class Poly:
     def int_data(self):
         return np.round_(self.data*1000).astype(int)
     
+    def set_int_data(self, idata):
+        self.data = idata.astype("float64")/1000;
+        self.Npts = self.data.size/2
+    
     def __init__(self,xpts,ypts,layer):
         self.layer = layer
         self.set_points(xpts,ypts)
@@ -979,11 +1428,185 @@ class Poly:
         lly = min(self.data[1::2])
         ury = max(self.data[1::2])
         return Box(llx,lly,urx-llx,ury-lly)
+    
+    def area(self):
+        area = 0.0;
+        x = self.data[0::2]
+        y = self.data[1::2]
+        n = int(len(x))
+        j = n-1
+        for i in range(n):
+            area += x[j]*y[i] - x[i]*y[j]
+            j=i
+        return float(round(1e6*abs(area / 2.0)))/1.0e6
+    
+    def centroid(self):
+        cx=0;
+        cy=0;
+        area=0;        
+        x = self.data[0::2]
+        y = self.data[1::2]
+        n = int(len(x))
+        j = n-1
+        for i in range(n):
+            shl = x[j]*y[i] - x[i]*y[j]
+            area +=  shl
+            cx+=(x[j]+x[i])*shl
+            cy+=(y[j]+y[i])*shl
+            j=i
+        cx/=3*area
+        cy/=3*area
+        return cx,cy
+    
+    def perimeter(self):
+        p = 0;
+        x = self.data[0::2]
+        y = self.data[1::2]
+        n = int(len(x))
+        j = n-1
+        for i in range(n):
+            p+=np.sqrt((x[i]-x[j])**2+(y[i]-y[j])**2)
+            j=i
+        return p
+    
+    def three_point_filter(self,keep_str: str) -> int:
+        """
+        Performs filtering of vertices based on a condition string.
+        Possible conditions are expressed based on the following variables
+        'A': "Three-point polygon unsigned area",
+        'As': "Three-point polygon signed area",
+        'P': "three point perimeter",
+        'S': "Shape index of the triangle (4*pi*A/(P**2))",
+        'x': "x-coordinate of query point",
+        'y': "y-coordinate of query point",
+        'xm': "x-coordinate of previous point",
+        'ym': "y-coordinate of previous point",
+        'xp': "x-coordinate of next point",
+        'yp': "y-coordinate of next point",
+        'dm': "distance between query point and previous point",
+        'dp': "distance between query point and next point",
+        'd0': "distance between previous and next point"
+        These variables are defined over 3 consecutive points.
+        If the condition is met, the middle point is kept, otherwise
+        it is discarded and the next 3 points are tested.
+
+        Parameters
+        ----------
+        keep_str : str
+            String that contains the condition to keep a vertex or not.
+
+        Raises
+        ------
+        NameError
+            If a name that is not allowed is used.
+
+        Returns
+        -------
+        int
+            The number of vertices discarded.
+
+        """
+        allowed_names = {'A': "Three-point polygon unsigned area",
+                         'As': "Three-point polygon signed area",
+                         'P': "three point perimeter",
+                         'S': "Shape index of the triangle (4*pi*A/(P**2))",
+                         'x': "x-coordinate of query point",
+                         'y': "y-coordinate of query point",
+                         'xm': "x-coordinate of previous point",
+                         'ym': "y-coordinate of previous point",
+                         'xp': "x-coordinate of next point",
+                         'yp': "y-coordinate of next point",
+                         'dm': "distance between query point and previous point",
+                         'dp': "distance between query point and next point",
+                         'd0': "distance between previous and next point"}
+        code = compile(keep_str,"<string>","eval")
+        for name in code.co_names:
+            if(name not in allowed_names):
+                raise NameError(f"Use of expression {name} not allowed")
         
+#        g.group[:] = [sflat.group[i] for i,val in enumerate(sel) if val]
+ #       return g
+        x = self.data[0::2]
+        y = self.data[1::2]
+        xf = []
+        yf = []
+        n = int(self.Npts)
+        ndisc = 0
+        j = n-1
+        k = n-2
+        for i in range(n):
+            Atri = x[i]*(y[j]-y[k])+x[j]*(y[k]-y[i]) + x[k]*(y[i]-y[j])
+            d1 = np.sqrt((x[i]-x[j])**2+(y[i]-y[j])**2)
+            d2 = np.sqrt((x[j]-x[k])**2+(y[j]-y[k])**2)
+            d3 = np.sqrt((x[i]-x[k])**2+(y[i]-y[k])**2)
+            allowed_names["A"]=abs(Atri)/2
+            allowed_names["As"]=Atri/2
+            allowed_names["P"]=d1+d2+d3
+            allowed_names["S"]=abs(Atri)*2*np.pi/allowed_names["P"]**2
+            allowed_names["x"]=x[j]
+            allowed_names["y"]=y[j]
+            allowed_names["xm"]=x[k]
+            allowed_names["ym"]=y[k]
+            allowed_names["xp"]=x[i]
+            allowed_names["yp"]=y[i]
+            allowed_names["dm"]=d2
+            allowed_names["dp"]=d1
+            allowed_names["d0"]=d3            
+            sel = eval(code, {"__builtins__": {}}, allowed_names)
+            if(sel):
+                xf+=[x[j]]
+                yf+=[y[j]]
+                k=j
+                j=i
+            else:
+                ndisc+=1
+                j=i
+        self.set_points(xf,yf)
+        return ndisc
+        
+            
+    
     def to_polygon(self):
         g = GeomGroup()
         g.add(self)
         return g
+
+    def to_circle(self, thresh: float = 0.95, vcount: int = 10):
+        g = GeomGroup()
+        if(self.Npts<vcount): 
+            return g
+        # Attempt to perform a conversion, return empty group if failed
+        # Check circularity
+        xpts = self.data[0::2]
+        ypts = self.data[1::2]
+        cx,cy = self.centroid()
+        rpts = np.sqrt((xpts-cx)**2+(ypts-cy)**2)
+        r_avg = rpts.mean()
+        rmin = np.min(rpts)
+        rmax = np.max(rpts)
+        circularity = 1-(rmax-rmin)/r_avg;
+        if(circularity>=thresh):
+            g.add(Circle(cx,cy,r_avg,self.layer))
+        return g
+        
+    def identical_to(self, p2: "Poly"):
+        x = self.data[0::2]
+        y = self.data[1::2]
+        x2 = p2.data[0::2]
+        y2 = p2.data[1::2]
+        x3 = np.append(x,x)
+        y3 = np.append(y,y)
+        for e in range(0, len(x)):
+            k = 0
+            for w in range(e, e + len(x)):
+                if x2[k]==x3[w] and y2[k]==y3[w]:
+                    k+= 1
+                else:
+                    break
+            # if all n elements are same circularly
+            if k == len(x):
+                return True
+        return False
 
     def point_inside(self,x,y):
         c = False
@@ -1114,7 +1737,29 @@ class Path:
         lly = min(self.ypts)
         ury = max(self.ypts)
         return Box(llx,lly,urx-llx,ury-lly)
-            
+
+    def path_length(self):
+        x=self.xpts
+        y=self.ypts
+        plen = 0.0
+        for i in range(1,self.Npts):
+            plen+=np.sqrt((x[i]-x[i-1])**2 + (y[i]-y[i-1])**2)
+        return plen
+        
+    def area(self):
+        # Approximately the path length * width
+        return self.path_length()*self.width
+    
+    def centroid(self):
+        # Give the average x,y
+        cx = np.array(self.xpts).mean()
+        cy = np.array(self.ypts).mean()
+        return cx,cy
+    
+    def perimeter(self):
+        # Approximately twice the length and twice width
+        return self.path_length()*2+self.width*2
+        
     def to_polygon(self):
         x=self.xpts
         y=self.ypts
@@ -1232,7 +1877,16 @@ class Text:
     def bounding_box(self):
         # Note this cannot be properly estimated
         return Box(self.x0,self.y0,0,0)
-        
+
+    def area(self):
+        return 0
+    
+    def centroid(self):
+        return self.x0,self.y0
+    
+    def perimeter(self):
+        return 0
+    
     def __to_path(self):
         offset =0;
         g = GeomGroup();
@@ -1310,6 +1964,9 @@ class RefBase:
         self.y0 = 2*yc-self.y0
         self.mirror = not self.mirror
         self.angle = -self.angle
+        
+    def centroid(self):
+        return self.x0,self.y0
                 
 class SRef(RefBase):
     def __init__(self,x0,y0,cellname,group,mag,angle,mirror):
@@ -1392,14 +2049,18 @@ class Circle:
     def rotate_translate(self,xc,yc,rot):
         cost = math.cos(rot/180*math.pi)
         sint = math.sin(rot/180*math.pi)
-        self.x0 = cost*(self.x0)-sint*(self.y0)+xc
-        self.y0 = sint*(self.x0)+cost*(self.y0)+yc
+        x = self.x0
+        y = self.y0
+        self.x0 = cost*x-sint*y+xc
+        self.y0 = sint*x+cost*y+yc
     
     def rotate(self,xc,yc,rot):
         cost = math.cos(rot/180*math.pi)
         sint = math.sin(rot/180*math.pi)
-        self.x0 = cost*(self.x0-xc)-sint*(self.y0-yc)+xc
-        self.y0 = sint*(self.x0-xc)+cost*(self.y0-yc)+yc
+        x = self.x0
+        y = self.y0
+        self.x0 = cost*(x-xc)-sint*(y-yc)+xc
+        self.y0 = sint*(x-xc)+cost*(y-yc)+yc
         
     def scale(self,xc,yc,scale_x,scale_y):
         self.x0 = scale_x*(self.x0-xc)+xc
@@ -1414,7 +2075,16 @@ class Circle:
         
     def bounding_box(self):
         return Box(self.x0-self.r,self.y0-self.r,2*self.r,2*self.r)
-        
+    
+    def area(self):
+        return np.pi*self.r*self.r
+    
+    def centroid(self):
+        return self.x0, self.y0
+    
+    def perimeter(self):
+        return 2*np.pi*self.r
+    
     def to_polygon(self,Npts=12):
         xc = np.array([0.]*Npts)
         yc = np.array([0.]*Npts)
@@ -1452,8 +2122,16 @@ class Ellipse(Circle):
         self.rot=-self.rot
     
     def bounding_box(self):
-        g = self.to_polygon(self,12)
+        g = self.to_polygon(12)
         return g.bounding_box()
+    
+    def area(self):
+        return np.pi*self.r*self.r1
+    
+    def perimeter(self):
+        a = self.r
+        b = self.r1
+        return np.pi*(3*(a+b)-np.sqrt((3*a+b)*(a+3*b)))
     
     def to_polygon(self,Npts=32):
         xc = np.array([0.]*Npts)
@@ -1476,8 +2154,17 @@ class Ring(Ellipse):
         self.w*=scale_x
     
     def bounding_box(self):
-        g = self.to_polygon(self,12)
+        g = self.to_polygon(12)
         return g.bounding_box()
+    
+    def area(self):
+        a1 = np.pi*(self.r+self.w/2)*(self.r1+self.w/2)
+        a2 = np.pi*(self.r-self.w/2)*(self.r1-self.w/2)
+        return a1-a2
+    
+    def perimeter(self):
+        g = self.to_polygon(12)
+        return g.group[0].perimeter()
         
     def to_polygon(self,Npts=32):
         xpts = np.array([0.]*(2+Npts*2))
@@ -1502,10 +2189,19 @@ class Arc(Ring):
         self.a2=a2
         
     def bounding_box(self):
-        g = self.to_polygon(self,12)
+        g = self.to_polygon(12)
         return g.bounding_box()
     
+    def area(self):
+        ra=Ring.area(self)
+        return ra * (math.radians(self.a2)-math.radians(self.a1))/2/np.pi
+    
+    def centroid(self):
+        g = self.to_polygon(12)
+        return g.group[0].centroid()
+    
     def to_polygon(self,Npts=32,autosplit=False):
+        Npts+=1
         th = np.linspace(math.radians(self.a1),math.radians(self.a2),Npts)
         xpts1 = np.cos(th)*(self.r+self.w/2)+self.x0
         ypts1 = np.sin(th)*(self.r1+self.w/2)+self.y0
@@ -1528,7 +2224,7 @@ class Arc(Ring):
 # Load fonts and store the glyphs
 # Maybe we should place this somewhere else
 caps=dict()
-with open(resource_filename('samplemaker.resources','sm_stencil_font.txt')) as f: 
+with open(resource_filename('samplemaker.resources','sm_stencil_font.txt'),encoding="ISO-8859-1") as f: 
     c = 'a';
     for line in f: 
         test = line.rstrip('\n').split(' ')
@@ -1563,4 +2259,3 @@ for i in caps:
     _glyphs[i]=(gl,x)
     
 del caps
-                

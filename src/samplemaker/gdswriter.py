@@ -94,7 +94,7 @@ class GDSWriter:
                         6,0x1602,0,6,0x1701,text.posu+text.posv*4+16,
                         8,0x0F03]);
         self.fid.write(struct.pack(">%sH" % buf.size,*buf))
-        self.fid.write(struct.pack(">i",math.floor(text.height*1000)))
+        self.fid.write(struct.pack(">i",math.floor(text.width*1000)))
         self.fid.write(struct.pack(">2H",12,0x1003))
         self.fid.write(struct.pack(">2i",
                                    math.floor(text.x0*1000),
@@ -129,8 +129,8 @@ class GDSWriter:
         self.__write_strans(sref.mag,sref.angle,sref.mirror)
         self.fid.write(struct.pack(">2H",12,0x1003))
         self.fid.write(struct.pack(">2i",
-                                   math.floor(sref.x0*1000),
-                                   math.floor(sref.y0*1000)))
+                                   int(round(sref.x0*1000)),
+                                   int(round(sref.y0*1000))))
         self.fid.write(struct.pack(">2H",4,0x1100))
         
     def __write_aref(self,aref):
@@ -142,8 +142,8 @@ class GDSWriter:
                                    math.floor(aref.nrows)))
         self.fid.write(struct.pack(">2H",28,0x1003))
         self.fid.write(struct.pack(">2i",
-                                   math.floor(aref.x0*1000),
-                                   math.floor(aref.y0*1000)))
+                                   int(round(aref.x0*1000)),
+                                   int(round(aref.y0*1000))))
         self.fid.write(struct.pack(">2i",
                                    math.floor((aref.x0+aref.ax*aref.ncols)*1000),
                                    math.floor((aref.y0+aref.ay*aref.ncols)*1000)))
@@ -157,7 +157,7 @@ class GDSWriter:
         for geom in gg.group:
             geomtype = type(geom);
             if(geomtype==smsh.Poly):
-                if(geom.Npts>16000):
+                if(geom.Npts>8000):
                     newgrp = GeomGroup()
                     newgrp.add(geom)
                     newgrp.trapezoids(geom.layer)
