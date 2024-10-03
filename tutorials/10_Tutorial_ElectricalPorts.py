@@ -32,10 +32,10 @@ ElectricalConnectorOptions = {"elbow_offset":5,
 
 # Then the connector function, which takes care of returning a geometry when called
 def ElectricalConnector(port1: DevicePort,port2: DevicePort):
-    xpts,ypts = ElbowRouter(port1, port2,ElectricalConnectorOptions["elbow_offset"])
+    xpts,ypts = ElbowRouter(port1=port1,port2= port2,offset=ElectricalConnectorOptions["elbow_offset"])
     
     # Let's also taper the width of the connector for non-uniform port size 
-    widths =np.linspace(port1.width,port2.width,len(xpts)).tolist()
+    widths =np.linspace(start=port1.width,stop=port2.width,num=len(xpts)).tolist()
     
     return sm.make_tapered_path(xpts,ypts,widths,
                         layer=ElectricalConnectorOptions["metal_layer"])
@@ -78,16 +78,16 @@ class FreeFreeMembraneELE(FreeFreeMembrane):
         # Now we draw a mesa around it.
         S = self._p["mesawidth"]
         # Draw the mesa area as a filled polygon, here a simple square
-        mesa = sm.make_rect(0,0,S,S)
+        mesa = sm.make_rect(x0=0,y0=0,width=S,height=S)
         
         conn_w = 0.8
-        port1 = ElectricalPort(0, S/2, "north", conn_w, "emesa")
+        port1 = ElectricalPort(x0=0,y0= S/2,orient= "north",width= conn_w,name= "emesa")
         # and add it to local port
         self.addlocalport(port1)
                 
         # Now draw a metal pad and wire to the port (again we use fixed values, could be parametrized)
-        pad=sm.make_rounded_rect(0, S/2-5, S-10, 4, 1)
-        pad += sm.make_path([0,0],[S/2-5,S/2],conn_w,to_poly=True)
+        pad=sm.make_rounded_rect(x0=0,y0= S/2-5,width= S-10,height= 4,corner_radius= 1)
+        pad += sm.make_path(xpts=[0,0],ypts=[S/2-5,S/2],width=conn_w,to_poly=True)
         pad.set_layer(ElectricalConnectorOptions["metal_layer"])
         pad.boolean_union(ElectricalConnectorOptions["metal_layer"])
 

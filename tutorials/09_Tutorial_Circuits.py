@@ -63,10 +63,10 @@ cir2.set_param("NETLIST", netlist2)
 # Now suppose we want to change the gap of the second beam splitter, how do we do that?
 # Namespaces separated by ::
 # in doubt you can always print(cir2._p)
-cir2.set_param("dev_X_1::dev_BASELIB_DCPL_1::gap", 0.1)
+cir2.set_param(param_name="dev_X_1::dev_BASELIB_DCPL_1::gap",value= 0.1)
 
 c2g = cir2.run()
-c2g.translate(100,0)
+c2g.translate(dx=100,dy=0)
 geomE+=c2g
 
 
@@ -76,7 +76,7 @@ geomE+=c2g
 # let's see how
 
 # Let's build a 1D array 
-tab = smlay.DeviceTable(cir, 1, 10, {}, {})
+tab = smlay.DeviceTable(dev=cir, nrow=1, ncol=10,rowvars= {}, colvars={})
 # Specify the position (let's offset them a little bit as we move over columns)
 # We do this by setting ax=30 and ay = 15
 tab.set_table_positions(tab.Regular(1,10, 40, 15, 0, 0))
@@ -85,7 +85,7 @@ tab.set_linked_ports((),(("BBB","AAA"),)) # links BBB to AAA of the next
 
 # Let's just get the geometries from the table
 tabg = tab.get_geometries()
-tabg.translate(0, 100);
+tabg.translate(dx=0,dy= 100);
 geomE+=tabg     
 
 # Let's add all to main cell

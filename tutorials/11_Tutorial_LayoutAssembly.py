@@ -29,7 +29,7 @@ geomE = sm.GeomGroup()
 
 # Usually we define a write-field region to place our elements
 # Let's use a 2x2 grid of 500-um write fields
-themask.addWriteFieldGrid(500, 0, 0, 2, 2)
+themask.addWriteFieldGrid(wf_size=500,x0= 0,y0= 0,Nx= 2,Ny= 2)
 
 # Now, it's good to place some e-beam marks
 # for multi-layer alignment. A mark is available in base lib
@@ -43,7 +43,7 @@ themask.addMarkers(markerset)
 # Then we proceed with the drawing of various parts 
 # We could make a table of directional couplers connected to gratings
 # So first we make the circuit
-elist = [smdev.NetListEntry("BASELIB_DCPL", 0, 0, "E", {"p1":"in","p2":"out"},{}),
+elist = [smdev.NetListEntry( "BASELIB_DCPL", 0, 0, "E", {"p1":"in","p2":"out"},{}),
          smdev.NetListEntry("BASELIB_FGC", -25, -10, "S", {"p1":"in"},{}),
          smdev.NetListEntry("BASELIB_FGC", 25, 20, "N", {"p1":"out"},{})]
 nlist = smdev.NetList("SimpleCircuit", elist)

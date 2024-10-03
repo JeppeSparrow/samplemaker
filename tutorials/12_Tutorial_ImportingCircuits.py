@@ -21,7 +21,7 @@ themask = smlay.Mask("12_Tutorial_ImportCircuits")
 # To create a circuit we need to define a netlist.
 # This time we use the ImportCircuit function for netlist
 
-netlist = smdev.NetList.ImportCircuit("CircuitFile.txt", "bigger")
+netlist = smdev.NetList.ImportCircuit(file_name="CircuitFile.txt", circuit_name="bigger")
 
 # as before we just create a circuit device and set the netlist    
 cir2 = smdev.Circuit.build()
