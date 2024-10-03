@@ -47,7 +47,7 @@ sequencer.options["wgLayer"] = 3 # Default is layer 1
 sequencer.options["bendResolution"] = 60 # Default is 30 points
 
 g2 = sequencer.run() # Re-run the sequencer
-g2.translate(30, 0) # move the waveguide up, so we can compare
+g2.translate(dx=30, dy=0) # move the waveguide up, so we can compare
 geomE+=g2
 
 ### More advanced sequences
@@ -71,7 +71,7 @@ print(sequencer.state)
 # STORED -> a list of coordinates stored along the sequence, you need to use the "STORE" command in the sequence
 # __XC__/__YC__-> position of the waveguide start point relative to the center when using the CENTER command
 
-g3.translate(0, 30)
+g3.translate(dx=0, dy=30)
 geomE+=g3
 
 # Now let's go back to the previous sequence
@@ -86,12 +86,12 @@ g4 = sequencer.run()
 print(sequencer.state)
 # Now STORED contains [0,-10], which is relative to the new center 
 # Note that subsequent translations on the geometry g4, will not alter the sequencer state
-g4.translate(50, 50)
+g4.translate(dx=50,dy= 50)
 geomE+=g4
 
 
 # Let's add all to main cell
-themask.addToMainCell(geomE)    
+themask.addToMainCell(geom_group=geomE)    
 
 # Export to GDS
 themask.exportGDS()
