@@ -33,11 +33,34 @@ class DirectionalCoupler(Device):
         self.set_description("Simple symmetric directional coupler")
     
     def parameters(self):
-        self.addparameter("length", 20, "Coupling length",float)
-        self.addparameter("width", 0.3, "Width of the waveguides in the coupling section",float,(0.01,1))
-        self.addparameter("gap", 0.5, "Distance between waveguides in the coupling section", float)
-        self.addparameter("input_dist", 5, "Distance between waveguides at input", float,(0.01,np.infty))
-        self.addparameter("input_len", 7, "Length of the input section from input to coupling", float, (3,np.infty))        
+        self.addparameter(param_name="length",
+                          default_value= 20,
+                          param_description= "Coupling length",
+                          param_type=float #this can likely be done better with typing
+                          )
+        self.addparameter(param_name="width",
+                          default_value= 0.3,
+                          param_description= "Width of the waveguides in the coupling section",
+                          param_type=float,
+                          param_range=(0.01,1)
+                          )
+        self.addparameter(param_name="gap",
+                          default_value= 0.5,
+                          param_description= "Distance between waveguides in the coupling section",
+                          param_type=float
+                          )
+        self.addparameter(param_name="input_dist",
+                          default_value= 5,
+                          param_description= "Distance between waveguides at input",
+                          param_type=float,
+                          param_range=(0.01,np.infty)
+                          )
+        self.addparameter(param_name="input_len",
+                          default_value= 7,
+                          param_description= "Length of the input section from input to coupling",
+                          param_type= float,
+                          param_range= (3,np.infty)
+                          )        
         
     def geom(self):
         p = self.get_params();

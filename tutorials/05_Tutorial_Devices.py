@@ -42,11 +42,28 @@ class FreeFreeMembrane(Device):
         # define all the paramters of the device and their default values.
         # You can specify what type the parameter has and what it the minimum-maximum allowed values
         # Default is float and range (0,infinity) for all parameters.
-        self.addparameter(param_name="L", default_value=40, param_description="Length of the membrane", param_type=float, param_range=(0.5,150))
-        self.addparameter(param_name="W",default_value= 12.5, param_description="Width of the membrane")
-        self.addparameter(param_name="tetW",default_value= 2, param_description="Tether width")
-        self.addparameter(param_name="tetOff", default_value=11,param_description= "Tether offset from the center")
-        self.addparameter(param_name="R",default_value= 30, param_description="Support ring radius")
+        self.addparameter(param_name="L",
+                          default_value=40,
+                          param_description="Length of the membrane",
+                          param_type=float, #can probably be done better with typing
+                          param_range=(0.5,150)
+                          )
+        self.addparameter(param_name="W",
+                         default_value= 12.5,
+                         param_description="Width of the membrane"
+                         )
+        self.addparameter(param_name="tetW",
+                          default_value= 2,
+                          param_description="Tether width"
+                          )
+        self.addparameter(param_name="tetOff",
+                          default_value=11,
+                          param_description= "Tether offset from the center"
+                          )
+        self.addparameter(param_name="R",
+                          default_value= 30,
+                          param_description="Support ring radius"
+                          )
         
     def geom(self):
         # This is where we place the commands for drawing!
