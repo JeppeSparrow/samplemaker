@@ -15,8 +15,8 @@ import samplemaker.makers as sm # used for drawing
 themask = smlay.Mask("03_Tutorial_GroupManipulation")
 
 # Let's start again from a simple shape
-base = sm.make_rect(0,0,2,10)
-base += sm.make_circle(4,5,1,to_poly=True,layer=3)
+base = sm.make_rect(x0=0,y0=0,width=2,height=10)
+base += sm.make_circle(x0=4,y0=5,r=1,to_poly=True,layer=3)
 
 # You can create empty groups
 geomE = sm.GeomGroup()
@@ -53,8 +53,8 @@ res1 = base.copy() # We keep base for later
 res1.set_layer(1) # put all in layer 1
 # The following bloats the polygons in layer 1 by 2 um in all directions, note that elements will merge
 # Use negative values to shrink
-res1.poly_resize(2.0, 1)
-res1.translate(20, 0)
+res1.poly_resize(offset=2.0,layer= 1)
+res1.translate(dx=20,dy= 0)
 
 geomE+=res1 # adding the result to the main Geometry
 
@@ -63,12 +63,12 @@ geomE+=res1 # adding the result to the main Geometry
 out1 = base.copy()
 out1.set_layer(1)
 # Creates an outline of the shape with width of 0.3 um
-out1.poly_outlining(0.3, 1)
-out1.translate(40, 0)
+out1.poly_outlining(offset=0.3,layer= 1)
+out1.translate(dx=40, dy=0)
 geomE+=out1
 
 # Let's add all to main cell
-themask.addToMainCell(geomE)    
+themask.addToMainCell(geom_group=geomE)    
 
 # Export to GDS
 themask.exportGDS()
