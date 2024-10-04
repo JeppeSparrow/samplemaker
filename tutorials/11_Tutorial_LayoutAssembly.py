@@ -55,8 +55,8 @@ cir.set_param("NETLIST", nlist)
 # Now we make a table of that circuit
 
 tab = smlay.DeviceTable(cir,7, 5, 
-                        {"dev_BASELIB_DCPL_1::gap":np.arange(start=0.1,stop=0.24,step=0.02)}, 
-                         {"dev_BASELIB_DCPL_1::width":np.arange(start=0.3,stop=0.35,step=0.01)})
+                        {"dev_BASELIB_DCPL_1::gap":np.arange(start=0.10,stop=0.24,step=0.02)}, 
+                         {"dev_BASELIB_DCPL_1::width":np.arange(start=0.30,stop=0.35,step=0.01)})
 # Specify the position 
 tab.set_table_positions(tab.Regular(rows=7,cols=5,ax= 70,ay= 0,bx= 0,by= 50))
 
