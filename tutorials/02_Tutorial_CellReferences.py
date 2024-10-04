@@ -3,7 +3,6 @@
 02_Tutorial_CellReferences
 """
 
-#%%
 # In this tutorial we learn to create multiple GDS cells and instantiate 
 # references (single or array)
 
@@ -67,4 +66,4 @@ themask.addToMainCell(geom_group=geomE)
 themask.exportGDS()
 
 # Finished!
-# %%
+

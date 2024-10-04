@@ -2,7 +2,6 @@
 """
 01_Tutorial_Shapes
 """
-#%%
 
 # In this tutorial we start drawing basic shapes 
 
@@ -155,4 +154,3 @@ themask.addToMainCell(geomE)
 themask.exportGDS()
 
 # Finished!
-# %%

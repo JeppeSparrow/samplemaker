@@ -2,11 +2,10 @@
 """
 00_Tutorial_BasicDrawing
 """
-#%%
 import samplemaker.layout as smlay # used for layout 
 import samplemaker.makers as sm # used for drawing
 from samplemaker.viewers import GeomView # Used to inspect drawing before viewing
-#%%
+
 # Create a simple mask layout
 themask = smlay.Mask("00_Tutorial_BasicDrawing")
 
@@ -54,4 +53,4 @@ themask.addToMainCell(re0)
 themask.exportGDS()
 
 # Finished!
-# %%
+
