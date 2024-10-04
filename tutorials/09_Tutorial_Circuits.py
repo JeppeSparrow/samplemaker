@@ -3,7 +3,6 @@
 09_Tutorial_Circuits
 """
 
-
 # In the last example we created a device with ports
 # The device is also available in the BASELIB collection
 # we will use this from now on
@@ -79,7 +78,7 @@ geomE+=c2g
 tab = smlay.DeviceTable(dev=cir, nrow=1, ncol=10,rowvars= {}, colvars={})
 # Specify the position (let's offset them a little bit as we move over columns)
 # We do this by setting ax=30 and ay = 15
-tab.set_table_positions(tab.Regular(1,10, 40, 15, 0, 0))
+tab.set_table_positions(tab.Regular(rows=1,cols=10,ax= 40,ay= 15, bx=0,by= 0)) #ax is 40 here, not 30 as in the comment
 # Now we can auto-link columns!
 tab.set_linked_ports((),(("BBB","AAA"),)) # links BBB to AAA of the next
 
@@ -95,3 +94,4 @@ themask.addToMainCell(geomE)
 themask.exportGDS()
 
 # Finished!
+# %%
